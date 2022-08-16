@@ -1,5 +1,5 @@
 .terraform/*
 new_user_credentials.csv
-*.tfstate
-*.tfstate.backup
+terraform.tfstate
+terraform.tfstate.backup
 *.tfvars
