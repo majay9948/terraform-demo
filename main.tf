@@ -1,35 +1,102 @@
-provider "aws"{
-    region = "us-east-1"
-    access_key= "AKIAZX337K44GJ57CQ4H"
-    secret_key= "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"
-}
-variable "dev-vpc" {
-  
-}
-resource "aws_vpc" "dev-vpc"{
-    cidr_block=var.dev-vpc
-    tags = {
-      "Name" = "Devlopment VPC"
-      "vpc-env" = "Dev-vpc"
-    }
-}
+provider "aws" {}
+variable "vpc_cidr_block" {}
+variable "subnet_cidr_block" {}
+variable "avail_zone" {}
+variable "env_prefix" {}
+variable "my_ip" {}
+variable "instance_type" {}
+variable "public_key_location" {}
 
-resource "aws_subnet" "dev-subnet-1" {
-    vpc_id=aws_vpc.dev-vpc.id
-    cidr_block = "10.0.10.0/24"
-    availability_zone = "us-east-1a"
-    tags = {
-      "Name" = "subent1"
-    }
+resource "aws_vpc" "myapp-vpc" {
+  cidr_block = var.vpc_cidr_block
+  tags = {
+    "Name" = "${var.env_prefix}-vpc"
+  }
+
 }
-data "aws_vpc" "existing-vpc" {
-    default = true
+resource "aws_subnet" "myapp-subnet-1" {
+  vpc_id            = aws_vpc.myapp-vpc.id
+  cidr_block        = var.subnet_cidr_block
+  availability_zone = var.avail_zone
+  tags = {
+    "Name" = "${var.env_prefix}-subnet-1"
+  }
+
 }
-resource "aws_subnet" "dev-subnet-2" {
-    vpc_id = data.aws_vpc.existing-vpc.id
-    cidr_block = "172.31.96.0/20"
-    availability_zone = "us-east-1a"
-    tags = {
-      "Name" = "subenet2"
-    }
+resource "aws_internet_gateway" "myapp-igw" {
+  vpc_id = aws_vpc.myapp-vpc.id
+  tags = {
+    Name = "${var.env_prefix}-igw"
+  }
+
+}
+resource "aws_default_route_table" "main-rtb" {
+  default_route_table_id = aws_vpc.myapp-vpc.default_route_table_id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.myapp-igw.id
+  }
+  tags = {
+    "Name" = "${var.env_prefix}-main-rtb"
+  }
+
+}
+resource "aws_default_security_group" "default-sg" {
+  vpc_id = aws_vpc.myapp-vpc.id
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = -1
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = {
+    "Name" = "${var.env_prefix}-default-sg"
+  }
+}
+data "aws_ami" "amazon-ami-image" {
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-kernel-*-x86_64-gp2"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+resource "aws_key_pair" "ssh-key" {
+  key_name   = "server-key"
+  public_key = file(var.public_key_location)
+}
+resource "aws_instance" "myapp-server" {
+  ami                         = data.aws_ami.amazon-ami-image.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.myapp-subnet-1.id
+  vpc_security_group_ids      = [aws_default_security_group.default-sg.id]
+  availability_zone           = var.avail_zone
+  associate_public_ip_address = true
+  key_name                    = aws_key_pair.ssh-key.key_name
+
+  tags = {
+    Name = "${var.env_prefix}-server"
+  }
+}
+output "aws-ami-ids" {
+  value = data.aws_ami.amazon-ami-image.id
+}
+output "ec2-public-ip" {
+  value = aws_instance.myapp-server.public_ip
 }
