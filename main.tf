@@ -1,7 +1,5 @@
 provider "aws"{
     region = "us-east-1"
-    access_key= "AKIAZX337K44GJ57CQ4H"
-    secret_key= "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"
 }
 variable "dev-vpc" {
   
